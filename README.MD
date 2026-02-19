@@ -1,6 +1,6 @@
-# Ops Assistant (MVP)
+# S360 AI Toolkit v1
 
-Ops Assistant is an AI-powered operations documentation tool designed to turn raw operational inputs—meeting notes, documents, and spreadsheets—into clear, structured SOPs and process documentation.
+S360 AI Toolkit v1 is a multi-assistant platform for operations, HR, and sales/marketing workflows. The current UI focuses on the Ops Assistant and supports multi-file ingestion and document generation.
 
 This repository contains the MVP implementation built with **Next.js**, **Node.js**, **Python**, and **Azure-native AI services**.
 
@@ -8,6 +8,12 @@ This repository contains the MVP implementation built with **Next.js**, **Node.j
 
 ## 🚀 What This Is
 
+S360 AI Toolkit helps teams:
+- Standardize operational documentation
+- Turn raw inputs into structured outputs
+- Generate reusable artifacts across Ops, HR, and Sales/Marketing
+
+### Current: Ops Assistant
 Ops Assistant helps operations teams:
 - Generate SOPs from meeting notes and working documents
 - Create structured process documentation automatically
@@ -21,7 +27,7 @@ It is an **AI ops analyst** focused on documentation quality, structure, and reu
 
 ## 🎯 MVP Goals
 
-The MVP focuses on a narrow, high-impact use case:
+The MVP focuses on a narrow, high-impact use case within Ops Assistant:
 
 - Upload operational source files
 - Ingest and index content
@@ -65,8 +71,9 @@ Generate a full Standard Operating Procedure from uploaded materials.
 - Step-by-step actions
 - Exceptions
 - Audit checklist
+- Step-level citations (docId, filename, chunkId, quote)
 
-Outputs are returned as **strict JSON** for easy rendering and export.
+Outputs are returned as **strict JSON** for easy rendering and export, and can be verified for evidence support.
 
 ---
 
@@ -81,6 +88,7 @@ Generate an end-to-end process document describing how work flows.
 - Edge cases
 - Metrics
 - Optional RACI (disabled by default in MVP)
+- Step-level citations (docId, filename, chunkId, quote)
 
 ---
 
@@ -88,14 +96,17 @@ Generate an end-to-end process document describing how work flows.
 - Only uses uploaded documents as context
 - Reduces hallucinations
 - Supports multi-document reasoning
+- Authority-weighted retrieval (policy > approved SOP > notes)
 
 ---
 
 ### 5. Simple UI & Export
 - Upload interface
-- Generate SOP / Process buttons
-- JSON output viewer
-- Copy outputs for use in Docs, Notion, or Confluence
+- Generate SOP / Process (verified) buttons
+- JSON output viewer + Copy JSON
+- Download formatted DOCX for sharing
+- Evidence modals with highlighted source text
+- Open full document via time-limited SAS link
 
 ---
 
@@ -136,6 +147,7 @@ Azure Blob Storage (Source Files)
 - Azure OpenAI for:
   - Embeddings
   - Text generation
+  - Verification pass for citation checks
 
 ### Future
 - Fine-tuned models on ops documentation
@@ -189,6 +201,7 @@ ops-assistant/
 
 - SOP or Process Doc generated in under 5 minutes
 - Outputs are structured, readable, and reusable
+- Citations and verification available for each step
 - Minimal manual editing required
 - Clear improvement over manual documentation workflows
 
@@ -196,6 +209,7 @@ ops-assistant/
 
 ## 🔮 Future Roadmap (Post-MVP)
 
+- HR and Sales/Marketing assistants in the UI
 - Versioned SOPs and process docs
 - Role-based views
 - Approval workflows
@@ -208,8 +222,8 @@ ops-assistant/
 
 ## 🧭 Positioning
 
-Ops Assistant is built to convert **operational chaos into structured assets**.
+S360 AI Toolkit is built to convert **operational chaos into structured assets**.
 
-This MVP establishes the foundation for a broader AI-powered operations platform focused on documentation, clarity, and execution.
+This MVP establishes the foundation for a broader AI-powered toolkit focused on documentation, clarity, and execution.
 
 ---

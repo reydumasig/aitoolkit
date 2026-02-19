@@ -66,30 +66,42 @@ app.post("/upload", upload.array("files"), async (req, res) => {
     await containerClient.createIfNotExists();
 
     const results = [];
+    const errors = [];
     for (const file of files) {
       const docType = (file.originalname.split(".").pop() || "").toLowerCase();
       const docId = crypto.randomUUID();
       const blobName = `${docId}_${file.originalname}`;
+      const authorityLevel = req.body?.authorityLevel || "standard";
 
-      const blockBlob = containerClient.getBlockBlobClient(blobName);
-      await blockBlob.uploadData(file.buffer, {
-        blobHTTPHeaders: { blobContentType: file.mimetype }
-      });
+      try {
+        const blockBlob = containerClient.getBlockBlobClient(blobName);
+        await blockBlob.uploadData(file.buffer, {
+          blobHTTPHeaders: { blobContentType: file.mimetype }
+        });
 
-      const sasUrl = await getReadSasUrl(bsc, blobName);
+        const sasUrl = await getReadSasUrl(bsc, blobName);
 
-      // Trigger ingestion in Python
-      await axios.post(`${aiUrl}/ingest`, {
-        docId,
-        docType,
-        filename: file.originalname,
-        blobUrl: sasUrl
-      });
+        // Trigger ingestion in Python
+        await axios.post(`${aiUrl}/ingest`, {
+          docId,
+          docType,
+          filename: file.originalname,
+          blobUrl: sasUrl,
+          blobName,
+          authorityLevel
+        });
 
-      results.push({ docId, filename: file.originalname, docType });
+        results.push({ docId, filename: file.originalname, docType, blobName });
+      } catch (err) {
+        errors.push({
+          filename: file.originalname,
+          docType,
+          error: err.message || "Upload failed"
+        });
+      }
     }
 
-    res.json({ items: results });
+    res.json({ items: results, errors });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Upload failed", details: err.message });
@@ -106,6 +118,16 @@ app.post("/generate/sop", async (req, res) => {
   }
 });
 
+app.post("/generate/sop_verified", async (req, res) => {
+  try {
+    const { docIds = [], style = "standard" } = req.body || {};
+    const r = await axios.post(`${aiUrl}/generate/sop_verified`, { docIds, style });
+    res.json(r.data);
+  } catch (err) {
+    res.status(500).json({ error: "Generate SOP Verified failed", details: err.message });
+  }
+});
+
 app.post("/generate/process", async (req, res) => {
   try {
     const { docIds = [], includeRaci = false } = req.body || {};
@@ -116,6 +138,58 @@ app.post("/generate/process", async (req, res) => {
     res.json(r.data);
   } catch (err) {
     res.status(500).json({ error: "Generate Process failed", details: err.message });
+  }
+});
+
+app.post("/generate/process_verified", async (req, res) => {
+  try {
+    const { docIds = [], includeRaci = false } = req.body || {};
+    const r = await axios.post(`${aiUrl}/generate/process_verified`, {
+      docIds,
+      includeRaci
+    });
+    res.json(r.data);
+  } catch (err) {
+    res.status(500).json({ error: "Generate Process Verified failed", details: err.message });
+  }
+});
+
+app.get("/source-chunk", async (req, res) => {
+  try {
+    const { docId, chunkId } = req.query || {};
+    if (!docId || typeof docId !== "string") {
+      return res.status(400).json({ error: "Missing docId" });
+    }
+    const r = await axios.get(`${aiUrl}/source-chunk`, {
+      params: { docId, chunkId }
+    });
+    res.json(r.data);
+  } catch (err) {
+    res.status(500).json({ error: "Source chunk fetch failed", details: err.message });
+  }
+});
+
+app.get("/doc-preview-url", async (req, res) => {
+  try {
+    const { docId } = req.query || {};
+    if (!docId || typeof docId !== "string") {
+      return res.status(400).json({ error: "Missing docId" });
+    }
+
+    const metaResp = await axios.get(`${aiUrl}/doc-meta`, { params: { docId } });
+    const meta = metaResp.data;
+
+    const bsc = getBlobServiceClient();
+    const sasUrl = await getReadSasUrl(bsc, meta.blobName);
+
+    res.json({
+      docId,
+      filename: meta.filename,
+      docType: meta.docType,
+      url: sasUrl
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to create doc preview url", details: err.message });
   }
 });
 

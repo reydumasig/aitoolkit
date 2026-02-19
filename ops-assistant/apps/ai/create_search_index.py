@@ -72,7 +72,11 @@ def build_index() -> SearchIndex:
         SimpleField(name="docId", type=SearchFieldDataType.String, filterable=True, facetable=True),
         SimpleField(name="filename", type=SearchFieldDataType.String, filterable=True, facetable=True),
         SimpleField(name="docType", type=SearchFieldDataType.String, filterable=True, facetable=True),
+        SimpleField(name="blobName", type=SearchFieldDataType.String, filterable=True, facetable=True),
+        SimpleField(name="authorityLevel", type=SearchFieldDataType.String, filterable=True, facetable=True),
         SimpleField(name="chunkId", type=SearchFieldDataType.Int32, filterable=True, sortable=True),
+        SimpleField(name="pageNumber", type=SearchFieldDataType.Int32, filterable=True, sortable=True),
+        SimpleField(name="sectionTitle", type=SearchFieldDataType.String, filterable=True, facetable=True),
         SearchableField(
             name="content",
             type=SearchFieldDataType.String,

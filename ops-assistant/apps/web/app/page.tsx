@@ -2,11 +2,15 @@
 
 import { useState } from "react";
 import { Document, Packer, Paragraph, TextRun } from "docx";
+import { SopViewer } from "./components/SopViewer";
+import { ProcessViewer } from "./components/ProcessViewer";
+import { VerificationPanel } from "./components/VerificationPanel";
 import {
   Alert,
   Box,
   Button,
   Container,
+  Divider,
   Paper,
   Stack,
   TextField,
@@ -18,7 +22,8 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4001";
 export default function Home() {
   const [files, setFiles] = useState<File[]>([]);
   const [docIds, setDocIds] = useState<string[]>([]);
-  const [output, setOutput] = useState<any>(null);
+  const [result, setResult] = useState<any>(null);
+  const [mode, setMode] = useState<"sop" | "process" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -37,9 +42,13 @@ export default function Home() {
         return;
       }
       const items = Array.isArray(data?.items) ? data.items : data?.docId ? [data] : [];
+      const errs = Array.isArray(data?.errors) ? data.errors : [];
       setDocIds((prev) => [...prev, ...items.map((i: any) => i.docId)]);
-      setOutput(null);
+      setResult(null);
       setFiles([]);
+      if (errs.length) {
+        setError(`Some files failed: ${errs.map((e: any) => e.filename).join(", ")}`);
+      }
     } finally {
       setIsUploading(false);
     }
@@ -48,7 +57,8 @@ export default function Home() {
   async function genSop() {
     setError(null);
     setIsGenerating(true);
-    const r = await fetch(`${API}/generate/sop`, {
+    setMode("sop");
+    const r = await fetch(`${API}/generate/sop_verified`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ docIds, style: "standard" }),
@@ -59,7 +69,7 @@ export default function Home() {
         setError(data?.error || "Generate SOP failed");
         return;
       }
-      setOutput(data);
+      setResult(data);
     } finally {
       setIsGenerating(false);
     }
@@ -68,7 +78,8 @@ export default function Home() {
   async function genProcess() {
     setError(null);
     setIsGenerating(true);
-    const r = await fetch(`${API}/generate/process`, {
+    setMode("process");
+    const r = await fetch(`${API}/generate/process_verified`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ docIds, includeRaci: false }),
@@ -79,7 +90,7 @@ export default function Home() {
         setError(data?.error || "Generate Process failed");
         return;
       }
-      setOutput(data);
+      setResult(data);
     } finally {
       setIsGenerating(false);
     }
@@ -127,6 +138,13 @@ export default function Home() {
           children.push(para(`Tools: ${s.tools.join(", ")}`));
         }
         if (s.output) children.push(para(`Output: ${s.output}`));
+        if (Array.isArray(s.sources) && s.sources.length) {
+          children.push(para("Sources:", { bold: true }));
+          s.sources.forEach((src: any) => {
+            const ref = `[${src.filename || "file"} | chunk ${src.chunkId ?? "?"}] ${src.quote || ""}`.trim();
+            children.push(para(ref));
+          });
+        }
       });
     }
     if (Array.isArray(doc.exceptions) && doc.exceptions.length) {
@@ -158,6 +176,13 @@ export default function Home() {
         const line = `Step ${s.step ?? ""}: ${s.what_happens ?? ""}`.trim();
         children.push(para(line, { bold: true }));
         if (s.owner) children.push(para(`Owner: ${s.owner}`));
+        if (Array.isArray(s.sources) && s.sources.length) {
+          children.push(para("Sources:", { bold: true }));
+          s.sources.forEach((src: any) => {
+            const ref = `[${src.filename || "file"} | chunk ${src.chunkId ?? "?"}] ${src.quote || ""}`.trim();
+            children.push(para(ref));
+          });
+        }
       });
     }
     if (Array.isArray(doc.edge_cases) && doc.edge_cases.length) {
@@ -181,10 +206,11 @@ export default function Home() {
   }
 
   async function downloadDocx() {
-    if (!output) return;
-    const title = output?.title || "Ops Assistant Output";
-    const isSop = Array.isArray(output?.steps) || Array.isArray(output?.audit_checklist);
-    const children = isSop ? formatSop(output) : formatProcess(output);
+    const docData = mode === "sop" ? result?.sop : result?.process;
+    if (!docData) return;
+    const title = docData?.title || "Ops Assistant Output";
+    const isSop = mode === "sop";
+    const children = isSop ? formatSop(docData) : formatProcess(docData);
     const doc = new Document({
       sections: [
         {
@@ -201,77 +227,177 @@ export default function Home() {
     URL.revokeObjectURL(url);
   }
 
+  async function copyJson() {
+    if (!result) return;
+    await navigator.clipboard.writeText(JSON.stringify(result, null, 2));
+  }
+
   return (
-    <Box sx={{ bgcolor: "grey.50", minHeight: "100vh", py: 6 }}>
-      <Container maxWidth="md">
-        <Stack spacing={3}>
-          <Box>
-            <Typography variant="h4" fontWeight={700}>
-              S360 Ai Toolkit v1
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Upload source files, then generate SOP or process docs.
-            </Typography>
-          </Box>
+    <Box sx={{ bgcolor: "grey.50", minHeight: "100vh" }}>
+      <Box sx={{ display: "flex", minHeight: "100vh" }}>
+        <Box
+          component="aside"
+          sx={{
+            width: 280,
+            bgcolor: "common.white",
+            borderRight: "1px solid",
+            borderColor: "divider",
+            p: 3,
+          }}
+        >
+          <Typography variant="h6" fontWeight={700}>
+            S360 AI Toolkit v1
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Core assistants
+          </Typography>
 
-          {error && <Alert severity="error">{error}</Alert>}
-
-          <Paper variant="outlined" sx={{ p: 3 }}>
-            <Stack spacing={2}>
-              <Typography variant="h6">Upload source files</Typography>
-              <Stack direction="row" spacing={2} alignItems="center">
-                <TextField
-                  type="file"
-                  inputProps={{ accept: ".docx,.pdf,.txt,.xlsx,.md", multiple: true }}
-                  onChange={(e) => setFiles(Array.from(e.target.files || []))}
-                />
-                <Button variant="contained" onClick={upload} disabled={!files.length || isUploading}>
-                  {isUploading ? "Uploading..." : "Upload"}
-                </Button>
-              </Stack>
-              <Typography variant="body2" color="text.secondary">
-                Selected files: {files.length ? files.map((f) => f.name).join(", ") : "(none)"}
+          <Stack spacing={2} sx={{ mt: 3 }}>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={600}>
+                Ops Assistant
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Loaded docIds: {docIds.join(", ") || "(none)"}
+                SOP drafting & cleanup
               </Typography>
-            </Stack>
-          </Paper>
+              <Typography variant="body2" color="text.secondary">
+                Process documentation
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Ticket / task summarization
+              </Typography>
+            </Box>
 
-          <Stack direction="row" spacing={2}>
-            <Button variant="contained" onClick={genSop} disabled={!docIds.length || isGenerating}>
-              Generate SOP
-            </Button>
-            <Button variant="outlined" onClick={genProcess} disabled={!docIds.length || isGenerating}>
-              Generate Process Doc
-            </Button>
+            <Divider />
+
+            <Box>
+              <Typography variant="subtitle1" fontWeight={600}>
+                HR Assistant
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                JD writing
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Interview question generation
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Onboarding checklist creation
+              </Typography>
+            </Box>
+
+            <Divider />
+
+            <Box>
+              <Typography variant="subtitle1" fontWeight={600}>
+                Sales / Marketing Assistant
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Outreach drafts
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Proposal outlines
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Campaign copy ideation
+              </Typography>
+            </Box>
           </Stack>
+        </Box>
 
-          <Paper variant="outlined" sx={{ p: 3 }}>
-            <Stack spacing={1}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="h6">Output</Typography>
-                <Button variant="outlined" onClick={downloadDocx} disabled={!output}>
-                  Download DOCX
+        <Box sx={{ flex: 1, py: 6 }}>
+          <Container maxWidth="md">
+            <Stack spacing={3}>
+              <Box>
+                <Typography variant="h4" fontWeight={700}>
+                  Ops Assistant
+                </Typography>
+                <Typography variant="body1" color="text.secondary">
+                  Upload source files, then generate SOP or process docs.
+                </Typography>
+              </Box>
+
+              {error && <Alert severity="error">{error}</Alert>}
+
+              <Paper variant="outlined" sx={{ p: 3 }}>
+                <Stack spacing={2}>
+                  <Typography variant="h6">Upload source files</Typography>
+                  <Stack direction="row" spacing={2} alignItems="center">
+                    <TextField
+                      type="file"
+                      inputProps={{ accept: ".docx,.pdf,.txt,.xlsx,.md", multiple: true }}
+                      onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={upload}
+                      disabled={!files.length || isUploading}
+                    >
+                      {isUploading ? "Uploading..." : "Upload"}
+                    </Button>
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    Selected files: {files.length ? files.map((f) => f.name).join(", ") : "(none)"}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Loaded docIds: {docIds.join(", ") || "(none)"}
+                  </Typography>
+                </Stack>
+              </Paper>
+
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Button variant="contained" onClick={genSop} disabled={!docIds.length || isGenerating}>
+                  Generate SOP (Verified)
+                </Button>
+                <Button variant="outlined" onClick={genProcess} disabled={!docIds.length || isGenerating}>
+                  Generate Process (Verified)
+                </Button>
+                <Button variant="text" onClick={copyJson} disabled={!result}>
+                  Copy JSON
                 </Button>
               </Stack>
-              <Box
-                component="pre"
-                sx={{
-                  whiteSpace: "pre-wrap",
-                  bgcolor: "grey.100",
-                  p: 2,
-                  borderRadius: 1,
-                  m: 0,
-                  minHeight: 160,
-                }}
-              >
-                {output ? JSON.stringify(output, null, 2) : "No output yet."}
-              </Box>
+
+              {result?.verification && (
+                <Paper variant="outlined" sx={{ p: 3 }}>
+                  <VerificationPanel verification={result.verification} />
+                </Paper>
+              )}
+
+              <Paper variant="outlined" sx={{ p: 3 }}>
+                <Stack spacing={1}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+                    <Typography variant="h6">Output</Typography>
+                    <Button variant="outlined" onClick={downloadDocx} disabled={!result}>
+                      Download DOCX
+                    </Button>
+                  </Stack>
+                  {mode === "sop" && result?.sop ? <SopViewer sop={result.sop} /> : null}
+                  {mode === "process" && result?.process ? (
+                    <ProcessViewer process={result.process} />
+                  ) : null}
+                  {!result && (
+                    <Typography variant="body2" color="text.secondary">
+                      Upload docs, then generate a Verified SOP or Process Doc.
+                    </Typography>
+                  )}
+                  <Box
+                    component="pre"
+                    sx={{
+                      whiteSpace: "pre-wrap",
+                      bgcolor: "grey.100",
+                      p: 2,
+                      borderRadius: 1,
+                      m: 0,
+                      minHeight: 160,
+                    }}
+                  >
+                    {result ? JSON.stringify(result, null, 2) : "No output yet."}
+                  </Box>
+                </Stack>
+              </Paper>
             </Stack>
-          </Paper>
-        </Stack>
-      </Container>
+          </Container>
+        </Box>
+      </Box>
     </Box>
   );
 }
